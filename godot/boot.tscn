@@ -1,7 +1,6 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=2 format=3]
 
 [ext_resource type="Script" path="res://scripts/boot.gd" id="1_boot"]
-[ext_resource type="VideoStream" path="res://assets/movies/dragon_age_main.ogv" id="2_movie"]
 
 [node name="Boot" type="Control"]
 layout_mode = 3
@@ -28,7 +27,6 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-stream = ExtResource("2_movie")
 autoplay = true
 expand = true
 
@@ -189,4 +187,3 @@ text = "LOADING REDCLIFFE VILLAGE…"
 horizontal_alignment = 1
 theme_override_colors/font_color = Color(0.78, 0.68, 0.54, 1)
 theme_override_font_sizes/font_size = 25
-

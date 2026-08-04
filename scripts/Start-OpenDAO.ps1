@@ -6,4 +6,4 @@ param(
 $ErrorActionPreference = "Stop"
 $project = (Resolve-Path (Join-Path $PSScriptRoot "..\godot")).Path
 if (-not (Test-Path -LiteralPath $Godot)) { throw "Godot not found: $Godot" }
-Start-Process -FilePath $Godot -ArgumentList @("--path", $project) -WorkingDirectory $project -PassThru
+Start-Process -FilePath $Godot -ArgumentList @("--path", $project, "--xr-mode", "off") -WorkingDirectory $project -PassThru

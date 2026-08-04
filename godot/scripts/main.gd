@@ -142,9 +142,10 @@ func _csv_vec3(value: String, fallback: Vector3) -> Vector3:
 	return Vector3(float(parts[0]), float(parts[1]), float(parts[2]))
 
 func _load_dao_area() -> void:
-	var profile := _read_json(ProjectSettings.globalize_path(PROFILE_PATH))
+	var runtime_profile_path := _runtime_profile_path()
+	var profile := _read_json(runtime_profile_path)
 	if profile.is_empty():
-		push_error("OpenDAO: invalid profile " + PROFILE_PATH)
+		push_error("OpenDAO: invalid profile " + runtime_profile_path)
 		return
 	var composed_scene := str(profile.get("scene_file", ""))
 	if not composed_scene.is_empty() and ResourceLoader.exists(composed_scene):
@@ -220,15 +221,16 @@ func _apply_authored_environment(environment: Dictionary, cloud_path: String = "
 		world_environment.environment.ambient_light_energy = 0.65
 		var rendering_method := RenderingServer.get_current_rendering_method()
 		var sky := Sky.new()
-		if rendering_method == "forward_plus":
-			var panorama_texture := load("res://assets/sky/redcliffe-cloud-panorama-v3.png") as Texture2D
+		if rendering_method == "forward_plus" and not cloud_path.is_empty() and FileAccess.file_exists(cloud_path):
+			var panorama_image := Image.load_from_file(cloud_path)
+			var panorama_texture := ImageTexture.create_from_image(panorama_image) if panorama_image != null and not panorama_image.is_empty() else null
 			if panorama_texture != null:
 				var panorama_material := PanoramaSkyMaterial.new()
 				panorama_material.panorama = panorama_texture
 				panorama_material.energy_multiplier = 0.72
 				sky.sky_material = panorama_material
 				world_environment.environment.sky_rotation = Vector3(0.0, deg_to_rad(130.0), 0.0)
-		else:
+		if sky.sky_material == null:
 			var sky_shader := load("res://shaders/dao_sky.gdshader") as Shader
 			if sky_shader != null:
 				var sky_material := ShaderMaterial.new()
@@ -237,6 +239,7 @@ func _apply_authored_environment(environment: Dictionary, cloud_path: String = "
 				sky_material.set_shader_parameter("sun_color", source_color / peak)
 				var authored_horizon := Color(fog_color.x, fog_color.y, fog_color.z).lerp(Color(0.34, 0.44, 0.56), 0.68)
 				sky_material.set_shader_parameter("horizon_color", authored_horizon)
+				sky.sky_material = sky_material
 		if sky.sky_material != null:
 			world_environment.environment.sky = sky
 			world_environment.environment.background_mode = Environment.BG_SKY
@@ -246,6 +249,16 @@ func _apply_authored_environment(environment: Dictionary, cloud_path: String = "
 	print("OPENDAO_AUTHORED_ENVIRONMENT sun=%s color=%s sky=%s probe=%s" % [
 		str(source_direction), str(source_color), str(environment.get("skydome", "")),
 		str(environment.get("probe_loaded", false))])
+
+func _runtime_profile_path() -> String:
+	var environment_path := OS.get_environment("OPENDAO_PROFILE")
+	if not environment_path.is_empty():
+		return environment_path
+	if not OS.has_feature("editor"):
+		var portable_path := OS.get_executable_path().get_base_dir().path_join("profile.json")
+		if FileAccess.file_exists(portable_path):
+			return portable_path
+	return ProjectSettings.globalize_path(PROFILE_PATH)
 
 func _create_volumetric_clouds(environment: Environment) -> void:
 	if environment == null or get_node_or_null("DAOCloudVolumes") != null:

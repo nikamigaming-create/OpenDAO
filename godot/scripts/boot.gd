@@ -8,10 +8,17 @@ func _ready() -> void:
 	$Menu/Buttons/Continue.pressed.connect(_continue_game)
 	$Menu/Buttons/Quit.pressed.connect(func(): get_tree().quit())
 	$Menu/Buttons/Continue.disabled = not FileAccess.file_exists(SAVE_PATH)
+	if OS.get_environment("OPENDAO_SMOKE_EXIT") == "1":
+		_show_menu()
+		print("OPENDAO_RUNTIME_SMOKE_PASS")
+		get_tree().quit()
+		return
 	# Automated renderer validation must never wait at the movie/menu or require
 	# foreground input. Interactive launches still show the normal boot flow.
 	if not OS.get_environment("DAOPEN_CAPTURE").is_empty() or not OS.get_environment("DAOPEN_TOUR").is_empty():
 		_load_world()
+	elif $Movie.stream == null:
+		_show_menu()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if $Movie.visible and event.is_pressed():

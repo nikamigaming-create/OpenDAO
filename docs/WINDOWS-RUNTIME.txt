@@ -1,0 +1,19 @@
+OpenDAO Windows runtime
+=======================
+
+OpenDAO.exe is the precompiled renderer. It contains no Dragon Age assets.
+The adjacent profile.json is created by OpenDAOImporter.exe after the user
+selects a legally installed Dragon Age: Origins game directory.
+
+Normal first-run flow (once the importer package is installed):
+
+  1. Run Setup-OpenDAO.cmd.
+  2. Select the Dragon Age Ultimate Edition installation folder.
+  3. Wait for the local compatibility cache to finish.
+  4. Run OpenDAO.exe.
+
+Controls: WASD move, mouse look, Shift sprint, Space jump/swim, Esc releases
+the mouse.
+
+OpenDAO does not include or download BioWare game data. Do not share the
+generated compatibility cache.
