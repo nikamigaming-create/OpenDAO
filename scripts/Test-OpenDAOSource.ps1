@@ -20,8 +20,10 @@ if ($LASTEXITCODE -ne 0) { $failures.Add('Python source compilation failed') }
 if ($ValidateHavenPatch) {
     $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ("opendao-haven-" + [guid]::NewGuid().ToString('N'))
     try {
-        git clone --quiet https://github.com/adarec1994/Haven-Tools.git $scratch
+        git -c core.autocrlf=false clone --quiet --no-checkout https://github.com/adarec1994/Haven-Tools.git $scratch
         if ($LASTEXITCODE -ne 0) { throw 'Haven Tools clone failed' }
+        git -C $scratch config core.autocrlf false
+        if ($LASTEXITCODE -ne 0) { throw 'Haven line-ending configuration failed' }
         git -C $scratch checkout --quiet --detach 0765a5db7b5cea0cc5b405867deca7fa373921db
         if ($LASTEXITCODE -ne 0) { throw 'Haven Tools revision checkout failed' }
         git -C $scratch apply --check (Join-Path $projectRoot 'patches\haven-tools-opendao.patch')

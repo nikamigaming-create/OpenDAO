@@ -13,8 +13,10 @@ if (Test-Path -LiteralPath $HavenRoot) { throw "Refusing to overwrite existing H
 
 $parent = Split-Path $HavenRoot -Parent
 New-Item -ItemType Directory -Path $parent -Force | Out-Null
-git clone $HavenRepository $HavenRoot
+git -c core.autocrlf=false clone --no-checkout $HavenRepository $HavenRoot
 if ($LASTEXITCODE -ne 0) { throw 'Haven Tools clone failed' }
+git -C $HavenRoot config core.autocrlf false
+if ($LASTEXITCODE -ne 0) { throw 'Haven line-ending configuration failed' }
 git -C $HavenRoot checkout --detach $HavenRevision
 if ($LASTEXITCODE -ne 0) { throw "Haven revision checkout failed: $HavenRevision" }
 git -C $HavenRoot apply --check $patch
