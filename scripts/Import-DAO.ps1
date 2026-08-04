@@ -1,14 +1,15 @@
 [CmdletBinding()]
 param(
-    [string]$GameRoot = "D:\SteamLibrary\steamapps\common\Dragon Age Ultimate Edition",
-    [string]$CacheRoot = "D:\code\opendao-poc\cache",
+    [Parameter(Mandatory)]
+    [string]$GameRoot,
+    [string]$CacheRoot = (Join-Path (Split-Path $PSScriptRoot -Parent) 'cache'),
+    [string]$HavenRoot = (Join-Path (Split-Path $PSScriptRoot -Parent) 'tools\Haven-Tools'),
     [string]$Area = "lak100d",
     [switch]$SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$havenRoot = Join-Path $projectRoot "tools\Haven-Tools"
 $havenExe = Join-Path $havenRoot "build\Release\HavenTools.exe"
 $geometryRim = Join-Path $GameRoot "packages\core\env\lak100d\lak100d.rim"
 $gameplayRim = Join-Path $GameRoot "modules\single player\data\al_arl01al_redcliffe_villag.rim"
@@ -46,4 +47,3 @@ $profile = [ordered]@{
 $profilePath = Join-Path $projectRoot "godot\profiles\local.json"
 $profile | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $profilePath -Encoding utf8NoBOM
 Write-Host "DAOPEN_IMPORT_READY profile=$profilePath area=$areaFile"
-

@@ -35,6 +35,20 @@ remain local and are excluded by `.gitignore`.
 
 The scripts accept explicit paths, so installs do not need to live on `D:`.
 
+## One-command setup
+
+After downloading a GitHub release or cloning the repository, run:
+
+```powershell
+pwsh -File scripts/Setup-OpenDAO.ps1 `
+  -GameRoot 'C:\Program Files (x86)\Steam\steamapps\common\Dragon Age Ultimate Edition' `
+  -CacheRoot 'C:\OpenDAO-cache'
+```
+
+This clones and patches the tested Haven Tools revision, builds it, imports
+Redcliffe from the user's owned DAO installation, and writes the local Godot
+profile. No BioWare content is downloaded or distributed by OpenDAO.
+
 ## Bootstrap the patched exporter
 
 ```powershell
@@ -54,6 +68,13 @@ pwsh -File scripts/Bootstrap-OpenDAO.ps1 -HavenRoot C:\src\Haven-Tools
 pwsh -File scripts/Import-DAO.ps1 `
   -GameRoot 'D:\SteamLibrary\steamapps\common\Dragon Age Ultimate Edition' `
   -CacheRoot 'D:\OpenDAO-cache'
+```
+
+Source-only checks, including verification that the exporter patch applies to
+the pinned upstream revision, run on GitHub Actions and can be run locally:
+
+```powershell
+pwsh -File scripts/Test-OpenDAOSource.ps1 -ValidateHavenPatch
 ```
 
 The importer configures/builds patched Haven Tools, extracts `lak100d`, and
