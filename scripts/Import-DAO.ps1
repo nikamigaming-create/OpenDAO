@@ -4,6 +4,7 @@ param(
     [string]$GameRoot,
     [string]$CacheRoot = (Join-Path (Split-Path $PSScriptRoot -Parent) 'cache'),
     [string]$HavenRoot = (Join-Path (Split-Path $PSScriptRoot -Parent) 'tools\Haven-Tools'),
+    [string]$ProfilePath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'godot\profiles\local.json'),
     [string]$Area = "lak100d",
     [switch]$SkipBuild
 )
@@ -44,6 +45,7 @@ $profile = [ordered]@{
     area = $Area
     display_name = "Redcliffe Village"
 }
-$profilePath = Join-Path $projectRoot "godot\profiles\local.json"
-$profile | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $profilePath -Encoding utf8NoBOM
+$profileParent = Split-Path $ProfilePath -Parent
+if ($profileParent) { New-Item -ItemType Directory -Path $profileParent -Force | Out-Null }
+$profile | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $ProfilePath -Encoding utf8NoBOM
 Write-Host "DAOPEN_IMPORT_READY profile=$profilePath area=$areaFile"

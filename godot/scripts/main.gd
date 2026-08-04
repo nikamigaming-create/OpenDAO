@@ -57,11 +57,143 @@ func _ready() -> void:
 			await _run_door_roundtrip_test(OS.get_environment("DAOPEN_TEST_DOOR_LEVEL"))
 		if OS.get_environment("DAOPEN_TEST_PLATFORM") == "1":
 			await _run_platform_test()
+	var telemetry_path := OS.get_environment("DAOPEN_TELEMETRY_PATH")
+	if not telemetry_path.is_empty():
+		await get_tree().process_frame
+		_dump_runtime_telemetry(telemetry_path)
 	print("OPENDAO_READY area=Redcliffe actors=%d instances=%d" % [loaded_actors, loaded_instances])
 	if not OS.get_environment("DAOPEN_TOUR").is_empty():
 		await _run_shareable_tour(OS.get_environment("DAOPEN_TOUR"))
 	else:
 		await _capture_if_requested()
+
+func _vec3_state(value: Vector3) -> Array:
+	return [value.x, value.y, value.z]
+
+func _color_state(value: Color) -> Array:
+	return [value.r, value.g, value.b, value.a]
+
+func _transform_state(value: Transform3D) -> Dictionary:
+	return {
+		"origin": _vec3_state(value.origin),
+		"basis": [
+			_vec3_state(value.basis.x),
+			_vec3_state(value.basis.y),
+			_vec3_state(value.basis.z),
+		],
+	}
+
+func _material_state(material: Material) -> Dictionary:
+	if material == null:
+		return {}
+	var state := {"class": material.get_class(), "resource": material.resource_path}
+	if material is BaseMaterial3D:
+		var base := material as BaseMaterial3D
+		state.merge({
+			"albedo_color": _color_state(base.albedo_color),
+			"albedo_texture": base.albedo_texture.resource_path if base.albedo_texture != null else "",
+			"normal_texture": base.normal_texture.resource_path if base.normal_texture != null else "",
+			"metallic": base.metallic,
+			"roughness": base.roughness,
+			"transparency": base.transparency,
+			"alpha_scissor": base.alpha_scissor_threshold,
+			"cull_mode": base.cull_mode,
+		})
+	elif material is ShaderMaterial:
+		var shader_material := material as ShaderMaterial
+		state["shader"] = shader_material.shader.resource_path if shader_material.shader != null else ""
+	return state
+
+func _collect_runtime_node(node: Node, output: Array) -> void:
+	var entry := {"path": str(node.get_path()), "name": node.name, "class": node.get_class()}
+	if node is Node3D:
+		entry["global_transform"] = _transform_state((node as Node3D).global_transform)
+	if node is VisualInstance3D:
+		entry["visible"] = (node as VisualInstance3D).is_visible_in_tree()
+		entry["aabb"] = {
+			"position": _vec3_state((node as VisualInstance3D).get_aabb().position),
+			"size": _vec3_state((node as VisualInstance3D).get_aabb().size),
+		}
+	if node is MeshInstance3D:
+		var mesh_instance := node as MeshInstance3D
+		entry["mesh"] = mesh_instance.mesh.resource_path if mesh_instance.mesh != null else ""
+		var surfaces: Array = []
+		if mesh_instance.mesh != null:
+			for surface in mesh_instance.mesh.get_surface_count():
+				var material := mesh_instance.get_active_material(surface)
+				surfaces.append({"index": surface, "material": _material_state(material)})
+		entry["surfaces"] = surfaces
+	if node is Light3D:
+		var light := node as Light3D
+		entry["light"] = {
+			"color": _color_state(light.light_color),
+			"energy": light.light_energy,
+			"indirect_energy": light.light_indirect_energy,
+			"shadow": light.shadow_enabled,
+		}
+		if light is OmniLight3D:
+			entry["light"]["range"] = (light as OmniLight3D).omni_range
+	if node is Camera3D:
+		var camera := node as Camera3D
+		entry["camera"] = {"fov": camera.fov, "near": camera.near, "far": camera.far}
+	if node is AnimationPlayer:
+		var animation_player := node as AnimationPlayer
+		entry["animation"] = {
+			"playing": animation_player.is_playing(),
+			"current": str(animation_player.current_animation),
+			"position": animation_player.current_animation_position,
+			"length": animation_player.current_animation_length,
+			"speed_scale": animation_player.speed_scale,
+		}
+	if node is Skeleton3D:
+		var skeleton := node as Skeleton3D
+		var bones: Array = []
+		for bone_index in skeleton.get_bone_count():
+			bones.append({
+				"index": bone_index,
+				"name": skeleton.get_bone_name(bone_index),
+				"parent": skeleton.get_bone_parent(bone_index),
+				"pose": _transform_state(skeleton.get_bone_pose(bone_index)),
+				"global_pose": _transform_state(skeleton.get_bone_global_pose(bone_index)),
+			})
+		entry["skeleton"] = {"bone_count": skeleton.get_bone_count(), "bones": bones}
+	output.append(entry)
+	for child in node.get_children():
+		_collect_runtime_node(child, output)
+
+func _dump_runtime_telemetry(path: String) -> void:
+	var nodes: Array = []
+	_collect_runtime_node(self, nodes)
+	var environment_state := {}
+	var world_environment := $Environment as WorldEnvironment
+	if world_environment.environment != null:
+		var environment := world_environment.environment
+		environment_state = {
+			"background_mode": environment.background_mode,
+			"ambient_color": _color_state(environment.ambient_light_color),
+			"ambient_energy": environment.ambient_light_energy,
+			"fog_enabled": environment.fog_enabled,
+			"fog_color": _color_state(environment.fog_light_color),
+			"fog_density": environment.fog_density,
+			"volumetric_fog_enabled": environment.volumetric_fog_enabled,
+			"volumetric_fog_length": environment.volumetric_fog_length,
+			"exposure_multiplier": environment.tonemap_exposure,
+		}
+	var state := {
+		"schema": "opendao-runtime-state-v1",
+		"engine": "godot",
+		"renderer": RenderingServer.get_current_rendering_method(),
+		"counts": {"actors": loaded_actors, "instances": loaded_instances, "lights": loaded_lights, "portals": loaded_portals, "water": water_tour_points.size()},
+		"environment": environment_state,
+		"nodes": nodes,
+	}
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		push_error("OPENDAO_TELEMETRY failed path=" + path)
+		return
+	file.store_string(JSON.stringify(state, "  "))
+	file.close()
+	print("OPENDAO_TELEMETRY path=%s nodes=%d" % [path, nodes.size()])
 
 func _configure_runtime_profile() -> void:
 	var mobile := OS.has_feature("mobile") or OS.get_environment("DAOPEN_MOBILE") == "1"
