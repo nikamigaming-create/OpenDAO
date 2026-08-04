@@ -1,0 +1,24 @@
+# Generated/proprietary game-derived data
+/artifacts/
+/cache/
+/logs/
+/godot/assets/generated/
+/godot/assets/movies/
+/godot/assets/redcliffe/
+/godot/assets/sky/
+/godot/.godot/
+/godot/profiles/local.json
+**/__pycache__/
+
+# Local runtime state and logs
+/*.log
+/*.err
+/haventools_settings.ini
+/imgui.ini
+
+# Third-party repositories are maintained as independent checkouts
+/tools/xoreos/
+/tools/xoreos-tools/
+/tools/Haven-Tools/build/
+/tools/Haven-Tools/
+/tools/
