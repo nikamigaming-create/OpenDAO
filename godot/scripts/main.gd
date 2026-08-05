@@ -8,6 +8,7 @@ const CHANTRY_AREA_FILE := "D:/code/opendao-poc/cache/interiors/chantry/lak106d/
 const CHANTRY_AREA_ROOT := "D:/code/opendao-poc/cache/interiors/chantry/lak106d"
 const INTERIOR_EXPORT_ROOT := "D:/code/opendao-poc/cache/interiors/all-v2"
 const CASTLE_INTERIOR_ROOT := "D:/code/opendao-poc/cache/interiors/lak200d-v6/lak200d"
+const LELIANA_PORTRAIT_MODEL := "D:/code/opendao-poc/cache/leliana-portrait/leliana.glb"
 const PORTAL_TARGETS := {
 	"arl100ip_door_general_store": {"level": "lak101d", "area": "arl170ar_general_store"},
 	"arl100ip_door_kaitlyn": {"level": "lak102d", "area": "arl140ar_kaitlyn_home"},
@@ -38,6 +39,10 @@ func _ready() -> void:
 	_configure_runtime_profile()
 	print("OPENDAO_BOOT stage=ready")
 	await _load_dao_area()
+	if OS.get_environment("DAOPEN_PORTRAIT").to_lower() == "leliana":
+		await _stage_leliana_portrait()
+		await _capture_if_requested()
+		return
 	var requested_start := OS.get_environment("DAOPEN_START_AREA")
 	if not requested_start.is_empty() and requested_start != "lak100d":
 		var requested_area := ""
@@ -1228,6 +1233,210 @@ func _prepare_meshes(root: Node) -> void:
 			material.metallic = 0.0
 			material.roughness = 0.72
 			mesh_instance.set_surface_override_material(surface, material)
+
+func _stage_leliana_portrait() -> void:
+	if not FileAccess.file_exists(LELIANA_PORTRAIT_MODEL):
+		push_error("OpenDAO: missing headless Leliana export " + LELIANA_PORTRAIT_MODEL)
+		return
+	for existing in $DAOScene.get_children():
+		if existing is Node3D and not existing.find_children("*", "Skeleton3D", true, false).is_empty():
+			(existing as Node3D).visible = false
+	var packed := _load_glb(LELIANA_PORTRAIT_MODEL)
+	if packed == null:
+		push_error("OpenDAO: failed to load Leliana portrait model")
+		return
+	var leliana := packed.instantiate() as Node3D
+	leliana.name = "LelianaPortrait"
+	$DAOScene.add_child(leliana)
+	_prepare_character_materials(leliana)
+	_play_default_animation(leliana)
+	await get_tree().process_frame
+
+	var bounds := _node_bounds(leliana)
+	var is_dai_leliana := false
+	for candidate in leliana.find_children("*", "MeshInstance3D", true, false):
+		var candidate_mesh := candidate as MeshInstance3D
+		if candidate_mesh.name.to_lower().begins_with("leliana body"):
+			bounds = candidate_mesh.global_transform * candidate_mesh.get_aabb()
+			is_dai_leliana = true
+			break
+	var portrait_xz := Vector2(256.0, -300.5)
+	var floor_y := 0.0
+	var query := PhysicsRayQueryParameters3D.create(
+		Vector3(portrait_xz.x, 200.0, portrait_xz.y),
+		Vector3(portrait_xz.x, -200.0, portrait_xz.y))
+	query.exclude = [$Player.get_rid()]
+	query.collision_mask = 3
+	query.hit_back_faces = true
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty():
+		floor_y = hit.position.y
+	leliana.position = Vector3(portrait_xz.x - bounds.get_center().x, floor_y - bounds.position.y, portrait_xz.y - bounds.get_center().z)
+	# Match the linked Leliana close-up: her nose points toward frame-left and
+	# the braided right side of the Origins bob remains visible.
+	leliana.rotation.y = deg_to_rad(-24.0) if is_dai_leliana else PI
+	await get_tree().process_frame
+
+	if is_dai_leliana:
+		for candidate in leliana.find_children("*", "MeshInstance3D", true, false):
+			var candidate_mesh := candidate as MeshInstance3D
+			if candidate_mesh.name.to_lower().begins_with("leliana body"):
+				bounds = candidate_mesh.global_transform * candidate_mesh.get_aabb()
+				break
+	else:
+		bounds = _node_bounds(leliana)
+	var height := maxf(bounds.size.y, 1.65)
+	var face_target := Vector3(bounds.get_center().x, bounds.position.y + height * 0.87, bounds.get_center().z)
+	var camera_distance_factor := 0.31 if is_dai_leliana else 0.50
+	var camera_position := face_target + Vector3(0.0, 0.015, height * camera_distance_factor)
+	$Player.set_scripted_motion(true)
+	$Player.global_position = camera_position - Vector3.UP * 0.65
+	$Player.look_at_target(face_target)
+	var camera := $Player/Head/Camera3D as Camera3D
+	# Lock the capture camera in world space after parenting so the portrait
+	# framing is deterministic and matches the head-and-shoulders reference.
+	camera.global_position = camera_position
+	camera.look_at(face_target, Vector3.UP)
+	camera.fov = 48.0 if is_dai_leliana else 52.0
+	$Status.visible = false
+
+	var key := OmniLight3D.new()
+	key.name = "PortraitKey"
+	key.light_color = Color(1.0, 0.82, 0.72)
+	key.light_energy = 1.15
+	key.omni_range = 4.5
+	key.shadow_enabled = true
+	key.position = face_target + Vector3(0.85, 0.62, 1.15)
+	add_child(key)
+	var rim := OmniLight3D.new()
+	rim.name = "PortraitRim"
+	rim.light_color = Color(0.34, 0.48, 0.9)
+	rim.light_energy = 0.32
+	rim.omni_range = 4.0
+	rim.position = face_target + Vector3(-1.15, 0.35, -0.55)
+	add_child(rim)
+	var environment := ($Environment as WorldEnvironment).environment
+	if environment != null:
+		environment.ambient_light_energy = 0.48
+		environment.tonemap_exposure = 1.0
+	print("OPENDAO_PORTRAIT character=leliana bounds=%s camera=%s target=%s" % [str(bounds), str(camera_position), str(face_target)])
+
+func _node_bounds(root: Node3D) -> AABB:
+	var bounds := AABB()
+	var initialized := false
+	for child in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		var world_bounds: AABB = mesh_instance.global_transform * mesh_instance.get_aabb()
+		bounds = bounds.merge(world_bounds) if initialized else world_bounds
+		initialized = true
+	return bounds
+
+func _prepare_character_materials(root: Node) -> void:
+	var skin_shader := load("res://third_party/HumanShaders/skin_shader.gdshader") as Shader
+	var hair_shader := load("res://shaders/dao_character_hair.gdshader") as Shader
+	var micro_detail := _load_project_texture("res://third_party/HumanShaders/Resources/MicroDetail/skin_micro_nrm_ao.png")
+	var sss_noise := _load_project_texture("res://third_party/HumanShaders/Resources/InterleavedGradientNoise.png")
+	var leliana_tint_mask := _load_project_texture("res://assets/generated/leliana_head_tint.png")
+	var leliana_dai_face_albedo := _load_project_texture("res://assets/generated/leliana_dai_face_albedo.png")
+	var leliana_dai_face_normal := _load_project_texture("res://assets/generated/leliana_dai_face_younger_normal.png")
+	var leliana_origins_hair_albedo := _load_project_texture("res://assets/generated/leliana_hair_origins_albedo.png")
+	var white_texture := _solid_texture(Color.WHITE)
+	for child in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		var semantic := mesh_instance.name.to_lower()
+		for surface in mesh_instance.mesh.get_surface_count():
+			var source := mesh_instance.mesh.surface_get_material(surface) as BaseMaterial3D
+			if source == null:
+				continue
+			var surface_semantic := semantic + " " + source.resource_name.to_lower()
+			if surface_semantic.contains("face"):
+				var is_dai_face := surface_semantic.contains("leliana face")
+				var material := ShaderMaterial.new()
+				material.shader = skin_shader
+				material.set_shader_parameter("albedo", source.albedo_color)
+				material.set_shader_parameter("texture_albedo", leliana_dai_face_albedo if is_dai_face else (source.albedo_texture if source.albedo_texture != null else white_texture))
+				# Restore the three-channel BioWare complexion pass that glTF extras cannot
+				# carry into Godot: R=lips, G=eye shadow, B=cheek blush.
+				material.set_shader_parameter("use_tint_mask", not is_dai_face)
+				material.set_shader_parameter("texture_tint_mask", leliana_tint_mask)
+				material.set_shader_parameter("tint_zone1", Vector3(0.71, 0.44, 0.21))
+				material.set_shader_parameter("tint_zone2", Vector3(0.73, 0.42, 0.35))
+				material.set_shader_parameter("tint_zone3", Vector3(0.88, 0.27, 0.12))
+				material.set_shader_parameter("tint_zone_opacity", Vector3.ONE)
+				material.set_shader_parameter("roughness", 0.74 if is_dai_face else 0.48)
+				material.set_shader_parameter("specular", 0.30 if is_dai_face else 0.5)
+				material.set_shader_parameter("double_specularity", not is_dai_face)
+				material.set_shader_parameter("texture_roughness", source.roughness_texture if source.roughness_texture != null else white_texture)
+				material.set_shader_parameter("metallic", 0.0)
+				material.set_shader_parameter("texture_metallic", white_texture)
+				material.set_shader_parameter("metallic_texture_channel", Vector4.ZERO)
+				material.set_shader_parameter("texture_normal", leliana_dai_face_normal if is_dai_face else (source.normal_texture if source.normal_texture != null else white_texture))
+				material.set_shader_parameter("normal_strength", 0.78 if is_dai_face else 1.0)
+				material.set_shader_parameter("use_micro_detail", true)
+				material.set_shader_parameter("micro_detail_scale", 64.0 if is_dai_face else 52.0)
+				material.set_shader_parameter("micro_normal_strength", 0.09 if is_dai_face else 0.24)
+				material.set_shader_parameter("micro_ao_strength", 0.08 if is_dai_face else 0.18)
+				material.set_shader_parameter("texture_micro_detail", micro_detail)
+				material.set_shader_parameter("use_ambient_occlusion", false)
+				material.set_shader_parameter("ambient_occlusion_texture", white_texture)
+				material.set_shader_parameter("ao_strength", 0.35)
+				material.set_shader_parameter("ao_block_light", 0.3)
+				material.set_shader_parameter("use_subsurface_scattering", true)
+				material.set_shader_parameter("use_noise", not is_dai_face)
+				material.set_shader_parameter("subsurface_scattering_strength", 0.31 if is_dai_face else 0.25)
+				material.set_shader_parameter("skin_smoothness", 5.0)
+				material.set_shader_parameter("skin_fallof_smoothness", 1.0)
+				material.set_shader_parameter("tinted_shadow_penumbra", false)
+				material.set_shader_parameter("old_lightwarp_fallof", false)
+				material.set_shader_parameter("texture_sss_noise", sss_noise)
+				material.set_shader_parameter("translucency", false)
+				material.set_shader_parameter("texture_translucency", white_texture)
+				material.set_shader_parameter("uv1_scale", Vector3.ONE)
+				material.set_shader_parameter("uv1_offset", Vector3.ZERO)
+				material.set_shader_parameter("uv2_scale", Vector3.ONE)
+				material.set_shader_parameter("uv2_offset", Vector3.ZERO)
+				mesh_instance.set_surface_override_material(surface, material)
+			elif surface_semantic.contains("hair"):
+				var material := ShaderMaterial.new()
+				material.shader = hair_shader
+				var is_origins_hair := surface_semantic.contains("leliana hair")
+				material.set_shader_parameter("albedo_texture", leliana_origins_hair_albedo if is_origins_hair else source.albedo_texture)
+				material.set_shader_parameter("normal_texture", source.normal_texture)
+				# The Origins hair diffuse already contains Leliana's authored auburn color.
+				# Keep it neutral; multiplying by another red tint crushes it to black.
+				var authored_hair_tint := Color.WHITE if is_origins_hair else source.albedo_color
+				material.set_shader_parameter("hair_tint", authored_hair_tint)
+				mesh_instance.set_surface_override_material(surface, material)
+			else:
+				var material := source.duplicate() as BaseMaterial3D
+				material.cull_mode = BaseMaterial3D.CULL_DISABLED
+				material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+				if surface_semantic.contains("eyes"):
+					material.roughness = 0.13
+					material.metallic = 0.0
+				elif surface_semantic.contains("lashes"):
+					material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+					material.alpha_scissor_threshold = 0.32
+					material.roughness = 0.55
+				else:
+					material.metallic = 0.14
+					material.roughness = 0.48
+				mesh_instance.set_surface_override_material(surface, material)
+
+func _solid_texture(color: Color) -> Texture2D:
+	var image := Image.create(2, 2, false, Image.FORMAT_RGBA8)
+	image.fill(color)
+	return ImageTexture.create_from_image(image)
+
+func _load_project_texture(path: String) -> Texture2D:
+	var image := Image.load_from_file(ProjectSettings.globalize_path(path))
+	if image == null or image.is_empty():
+		return _solid_texture(Color.WHITE)
+	return ImageTexture.create_from_image(image)
 
 func _play_default_animation(root: Node) -> void:
 	for candidate in root.find_children("*", "AnimationPlayer", true, false):
