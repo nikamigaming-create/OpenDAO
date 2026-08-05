@@ -15,7 +15,9 @@ func _ready() -> void:
 		return
 	# Automated renderer validation must never wait at the movie/menu or require
 	# foreground input. Interactive launches still show the normal boot flow.
-	if not OS.get_environment("DAOPEN_CAPTURE").is_empty() or not OS.get_environment("DAOPEN_TOUR").is_empty():
+	if (not OS.get_environment("DAOPEN_CAPTURE").is_empty()
+			or not OS.get_environment("DAOPEN_TOUR").is_empty()
+			or not OS.get_environment("DAOPEN_EXPORT_GLTF").is_empty()):
 		_load_world()
 	elif $Movie.stream == null:
 		_show_menu()

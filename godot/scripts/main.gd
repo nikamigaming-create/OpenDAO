@@ -62,6 +62,18 @@ func _ready() -> void:
 		await get_tree().process_frame
 		_dump_runtime_telemetry(telemetry_path)
 	print("OPENDAO_READY area=Redcliffe actors=%d instances=%d" % [loaded_actors, loaded_instances])
+	var export_path := OS.get_environment("DAOPEN_EXPORT_GLTF")
+	if not export_path.is_empty():
+		await get_tree().process_frame
+		var export_document := GLTFDocument.new()
+		var export_state := GLTFState.new()
+		var append_error := export_document.append_from_scene($DAOScene, export_state)
+		var write_error := ERR_CANT_CREATE
+		if append_error == OK:
+			write_error = export_document.write_to_filesystem(export_state, export_path)
+		print("OPENDAO_RUNTIME_GLTF path=%s append=%d write=%d" % [export_path, append_error, write_error])
+		get_tree().quit(0 if append_error == OK and write_error == OK else 4)
+		return
 	if not OS.get_environment("DAOPEN_TOUR").is_empty():
 		await _run_shareable_tour(OS.get_environment("DAOPEN_TOUR"))
 	else:
